@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Game Hub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+<style>
+:root{
+  --bg:#050914;
+  --card:#0e162a;
+  --neon:#00ffff;
+  --text:#ffffff;
+}
+*{box-sizing:border-box;font-family:Arial;}
+body{margin:0;background:radial-gradient(circle at top,#0f1e3d,var(--bg));color:var(--text);}
+#logo{width:100px;height:100px;border-radius:50%;display:block;margin:10px auto;cursor:pointer;object-fit:cover;border:2px solid var(--neon);transition:0.3s;}
+#logo:hover{box-shadow:0 0 20px var(--neon);transform:scale(1.1);}
+.admin{color:gold;font-weight:bold;}
+
+@media(max-width:900px){
+  body::before{
+    content:"🚫 COMPUTER ONLY";
+    position:fixed;inset:0;
+    background:black;
+    display:grid;
+    place-items:center;
+    font-size:2rem;
+    z-index:9999;
+  }
+}
+
+#login{height:100vh;display:grid;place-items:center;}
+.login-box{
+  background:var(--card);
+  padding:30px;
+  border-radius:15px;
+  box-shadow:0 0 25px var(--neon);
+  width:300px;
+}
+.login-box input,button{width:100%;padding:10px;margin-bottom:10px;border:none;border-radius:8px;}
+.login-box button{background:var(--neon);font-weight:bold;cursor:pointer;}
+
+#app{display:none;}
+header{background:#060b18;padding:12px;display:flex;gap:10px;flex-wrap:wrap;}
+header button{
+  background:none;border:1px solid var(--neon);color:white;
+  padding:8px 14px;cursor:pointer;border-radius:8px;
+}
+header button:hover{background:var(--neon);color:black;}
+
+#searchBar{width:100%;padding:10px;margin:10px 0;border-radius:8px;border:none;}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:20px;
+}
+.card{
+  background:var(--card);
+  padding:10px;
+  border-radius:15px;
+  text-align:center;
+  cursor:pointer;
+  transition:0.3s;
+}
+.card:hover{
+  transform:scale(1.05);
+  box-shadow:0 0 25px var(--neon);
+}
+.card img{
+  width:100%;
+  height:100px;
+  object-fit:cover;
+  border-radius:10px;
+  margin-bottom:5px;
+}
+
+iframe{width:100%;height:80vh;border:none;}
+
+#chatBox{background:#111;padding:10px;height:200px;overflow-y:auto;border-radius:10px;margin-top:10px;}
+#chatInput{width:75%;padding:10px;border-radius:8px;border:none;}
+#chatSend{padding:10px;background:var(--neon);border:none;border-radius:8px;cursor:pointer;}
+#leaderboard{margin-top:20px;background:#111;padding:10px;border-radius:10px;}
+.favorite{color:yellow;font-weight:bold;}
+</style>
+</head>
+<body>
+
+<img id="logo" src="https://i.imgur.com/4b1852c6.png" onclick="goHome()">
+
+<div id="login">
+  <div class="login-box">
+    <h2>Login</h2>
+    <input id="username" placeholder="Username">
+    <input id="pw" type="password" placeholder="Password">
+    <button onclick="login()">Enter</button>
+    <p id="err"></p>
+  </div>
+</div>
+
+<div id="app">
+<input id="searchBar" placeholder="Search games...">
+<header>
+  <button onclick="showCategory('classic')">Classic</button>
+  <button onclick="showCategory('action')">Action & Racing</button>
+  <button onclick="showCategory('horror')">Horror</button>
+  <button onclick="showCategory('study')">Study</button>
+  <button id="adminBtn" onclick="adminPanel()" style="display:none;">Admin 👑</button>
+</header>
+
+<div id="game"></div>
+
+<div id="chatBox"></div>
+<input id="chatInput"><button id="chatSend">Send</button>
+
+<div id="leaderboard">
+  <h2>🏆 Leaderboard</h2>
+  <div id="leaderboardList"></div>
+</div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBux7pWgXvmyUTtJ3xdqe9ittaIBQiSDB4",
+  authDomain: "game-hub-9bf71.firebaseapp.com",
+  projectId: "game-hub-9bf71",
+  storageBucket: "game-hub-9bf71.firebasestorage.app",
+  messagingSenderId: "308811078371",
+  appId: "1:308811078371:web:cde710dbb1ead5d1c543d6",
+  measurementId: "G-SY43VEEP0P"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+const PASSWORD="Gamehub321";
+const ADMIN_PASSWORD="BughaFortnite1";
+const SECRET_PASSWORD="teacher123";
+const REOPEN_PASSWORD="Reopen123";
+
+let username=null, isAdmin=false, currentGame=null, startTime=null;
+let favorites = [];
+
+const gameList = [
+  {name:'Basketball Stars', url:'https://basketball-stars.io/', icon:'basketball-stars.png', category:'classic'},
+  {name:'Geometry Dash', url:'https://geometrylitepc.io/', icon:'geometry-dash.png', category:'classic'},
+  {name:'Slope', url:'https://slopegame.io', icon:'slope.png', category:'classic'},
+  {name:'Moto X3M', url:'https://motox3m-free.github.io/', icon:'moto-x3m.png', category:'classic'},
+  {name:'Bloxd.io', url:'https://bloxd.io/game/classic_survival', icon:'bloxd.png', category:'classic'},
+  {name:'Zombs Royale', url:'https://zombsroyale.io/', icon:'zombs.png', category:'action'},
+  {name:'Smash Karts', url:'https://smashkarts.io/', icon:'smash-karts.png', category:'action'},
+  {name:'1v1.LOL', url:'https://1v1-lol.gitlab.io/', icon:'1v1lol.png', category:'action'},
+  {name:'Krunker', url:'https://krunker.io/?game=DAL:349mg', icon:'krunker.png', category:'action'},
+  {name:'Kogama', url:'https://www.kogama.com/', icon:'kogama.png', category:'action'},
+  {name:'Soccer Bros', url:'https://soccer-bros.github.io/', icon:'soccer-bros.png', category:'action'},
+  {name:'Sandbox City', url:'https://sandboxcity.net/', icon:'sandbox-city.png', category:'action'},
+  {name:'Veck.io', url:'https://geometrylitepc.io/veck-io', icon:'veck.png', category:'action'},
+  {name:'OpenFront', url:'https://openfront.io/', icon:'openfront.png', category:'action'},
+  {name:'Subway Surfers', url:'https://azgames.io/subway-surfers', icon:'subway-surfers.png', category:'action'},
+  {name:'Voxiom', url:'https://voxiom.io/', icon:'voxiom.png', category:'action'},
+  {name:'Granny', url:'https://granny-games.com/', icon:'granny.png', category:'horror'},
+  {name:'FNAF', url:'https://fnafgames.io/', icon:'fnaf.png', category:'horror'},
+  {name:'FNAF 2', url:'https://fnaf-2.io/', icon:'fnaf2.png', category:'horror'},
+  {name:'Sister Location', url:'https://fngames.io/five-nights-at-freddys-sister-location', icon:'sister-location.png', category:'horror'},
+  {name:'Prison Escape', url:'https://www.crazygames.com/game/prison-escape-lnj', icon:'prison-escape.png', category:'horror'},
+  {name:'Exhibit of Sorrows', url:'https://www.crazygames.com/game/exhibit-of-sorrows', icon:'exhibit-of-sorrows.png', category:'horror'},
+  {name:'Seeing Things', url:'https://www.crazygames.com/game/seeing-things', icon:'seeing-things.png', category:'horror'}
+];
+
+const appDiv=document.getElementById("app");
+const loginDiv=document.getElementById("login");
+const gameDiv=document.getElementById("game");
+const chatBox=document.getElementById("chatBox");
+const chatInput=document.getElementById("chatInput");
+const chatSend=document.getElementById("chatSend");
+const adminBtn=document.getElementById("adminBtn");
+const leaderboardList=document.getElementById("leaderboardList");
+const searchBar=document.getElementById("searchBar");
+
+function goHome(){ showCategory('classic'); }
+
+// LOGIN FUNCTION
+function login(){
+  username=document.getElementById("username").value.trim();
+  const pw=document.getElementById("pw").value;
+  if(!username || !pw){document.getElementById("err").textContent="Enter username & password"; return;}
+  
+  // simple password check
+  if(pw!==PASSWORD && pw!==ADMIN_PASSWORD && pw!==SECRET_PASSWORD && pw!==REOPEN_PASSWORD){
+    document.getElementById("err").textContent="Incorrect password"; return;
+  }
+  
+  loginDiv.style.display="none";
+  appDiv.style.display="block";
+  isAdmin=pw===ADMIN_PASSWORD;
+  if(isAdmin) adminBtn.style.display="inline-block";
+  
+  showCategory('classic');
+  updateLeaderboard();
+}
+
+// SEARCH BAR
+searchBar.addEventListener('input', ()=>{filterGames(searchBar.value.toLowerCase());});
+
+function filterGames(query){
+  document.querySelectorAll('.card').forEach(c=>{
+    const name=c.getAttribute('data-name').toLowerCase();
+    if(name.includes(query)) c.style.display='block';
+    else c.style.display='none';
+  });
+}
+
+// SHOW CATEGORY
+function showCategory(cat){
+  saveTime();
+  let html='<div class="grid">';
+  gameList.forEach(g=>{
+    if(g.category===cat){
+      html+=`<div class="card" data-name="${g.name}" onclick="loadGame('${g.name}','${g.url}')">
+      <img src="icons/${g.icon}" alt="${g.name}"><b>${g.name}</b>
+      <button onclick="toggleFavorite(event,'${g.name}')">⭐</button>
+      </div>`;
+    }
+  });
+  html+='</div>';
+  gameDiv.innerHTML=html;
+}
+
+// FAVORITES
+function toggleFavorite(e,name){
+  e.stopPropagation();
+  if(favorites.includes(name)) favorites=favorites.filter(f=>f!==name);
+  else favorites.push(name);
+  updateFavorites();
+}
+
+function updateFavorites(){
+  if(favorites.length===0) return;
+  let html='<h3>⭐ Favorites</h3><div class="grid">';
+  favorites.forEach(f=>{
+    const g=gameList.find(x=>x.name===f);
+    if(g) html+=`<div class="card" data-name="${g.name}" onclick="loadGame('${g.name}','${g.url}')">
+      <img src="icons/${g.icon}" alt="${g.name}"><b>${g.name}</b>
+      <button onclick="toggleFavorite(event,'${g.name}')">⭐</button>
+    </div>`;
+  });
+  html+='</div>';
+  gameDiv.innerHTML=html+gameDiv.innerHTML;
+}
+
+// LOAD GAME + FULLSCREEN + ALT toggle
+function loadGame(name,url){
+  saveTime();
+  currentGame=name;
+  startTime=Date.now();
+  const iframe=document.createElement('iframe');
+  iframe.src=url;
+  gameDiv.innerHTML='';
+  gameDiv.appendChild(iframe);
+  
+  // enter fullscreen
+  if(document.fullscreenEnabled && !document.fullscreenElement){
+    iframe.requestFullscreen().catch(()=>{});
+  }
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape' && document.fullscreenElement) document.exitFullscreen();
+  if(e.key==='Alt' && !document.fullscreenElement){
+    const iframe=gameDiv.querySelector('iframe');
+    if(iframe) iframe.requestFullscreen();
+  }
+});
+
+// SAVE TIME (stub, can link to Firebase if needed)
+function saveTime(){
+  if(currentGame && startTime){
+    const sec=Math.floor((Date.now()-startTime)/1000);
+    // Here you could send to Firebase as in your old code
+  }
+}
+
+// LEADERBOARD (stub)
+function updateLeaderboard(){
+  leaderboardList.innerHTML='<p>Leaderboard will appear here</p>';
+}
+
+// CHAT (stub)
+chatSend.onclick=()=>{chatInput.value='';};
+</script>
+</body>
+</html>
